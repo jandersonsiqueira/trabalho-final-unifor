@@ -1,0 +1,176 @@
+name: DevSecOps - VAmPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Enviar resultados aos servicos locais (runner devsecops-lab online)
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devsecops-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sast:
+    name: 1 - SAST e SARIF
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout da pipeline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Checkout e preparacao do VAmPI
+        run: bash scripts/prepare.sh
+      - name: Preparacao do Semgrep
+        run: |
+          source config/tools.env
+          docker pull "$SEMGREP_IMAGE"
+      - name: SAST - Semgrep (gera SARIF nativo)
+        run: bash scripts/scan.sh sast
+      - name: Geracao do SARIF - validar resultado
+        run: python3 scripts/validate_report.py reports/semgrep.sarif
+      - name: Armazenar SARIF e logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reports-sast
+          path: reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  sca:
+    name: 2 - SCA e SBOM do fonte
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout da pipeline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Checkout e preparacao do VAmPI
+        run: bash scripts/prepare.sh
+      - name: Preparacao do cdxgen
+        run: |
+          source config/tools.env
+          docker pull "$CDXGEN_IMAGE"
+      - name: SCA - cdxgen e resolucao de dependencias
+        run: bash scripts/scan.sh source
+      - name: Geracao do SBOM - validar CycloneDX
+        run: python3 scripts/validate_report.py reports/sbom.json
+      - name: Armazenar SBOM do fonte e logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reports-source
+          path: reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  image:
+    name: 3 - SCA e SBOM da imagem
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout da pipeline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Checkout e preparacao do VAmPI
+        run: bash scripts/prepare.sh
+      - name: Preparacao do cdxgen
+        run: |
+          source config/tools.env
+          docker pull "$CDXGEN_IMAGE"
+      - name: Build da imagem VAmPI
+        run: bash scripts/scan.sh build
+      - name: SCA - cdxgen na imagem construida
+        run: bash scripts/scan.sh image
+      - name: Geracao do SBOM da imagem - validar CycloneDX
+        run: python3 scripts/validate_report.py reports/sbom-image.json
+      - name: Armazenar SBOM da imagem e logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reports-image
+          path: reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  upload:
+    name: 4 - Integracoes locais
+    needs: [sast, sca, image]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.upload &&
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+          (needs.sast.result == 'success' || needs.sca.result == 'success' || needs.image.result == 'success') }}
+    runs-on: [self-hosted, devsecops-lab]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout dos scripts de integracao
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Preparacao do cliente de API
+        run: |
+          python3 -m venv .work/upload-venv
+          .work/upload-venv/bin/python -m pip install -r requirements.txt
+      - name: Recuperar artifacts desta execucao
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: reports-*
+          path: reports
+          merge-multiple: true
+      - name: Upload SAST para DefectDojo
+        if: ${{ !cancelled() && needs.sast.result == 'success' }}
+        env:
+          DOJO_URL: ${{ vars.DOJO_URL }}
+          DOJO_ENGAGEMENT_ID: ${{ vars.DOJO_ENGAGEMENT_ID }}
+          DOJO_TEST_ID: ${{ vars.DOJO_TEST_ID }}
+          DOJO_API_KEY: ${{ secrets.DOJO_API_KEY }}
+        run: |
+          set -o pipefail
+          .work/upload-venv/bin/python scripts/upload.py dojo reports/semgrep.sarif \
+            --receipt reports/uploads/dojo.json 2>&1 | tee reports/dojo-upload.log
+      - name: Upload SBOM do fonte para Dependency-Track
+        if: ${{ !cancelled() && needs.sca.result == 'success' }}
+        env:
+          DTRACK_URL: ${{ vars.DTRACK_URL }}
+          DTRACK_PROJECT_UUID: ${{ vars.DTRACK_PROJECT_UUID }}
+          DTRACK_API_KEY: ${{ secrets.DTRACK_API_KEY }}
+        run: |
+          set -o pipefail
+          .work/upload-venv/bin/python scripts/upload.py dtrack reports/sbom.json \
+            --receipt reports/uploads/dtrack-source.json 2>&1 | tee reports/dtrack-source-upload.log
+      - name: Upload SBOM da imagem para Dependency-Track
+        if: ${{ !cancelled() && needs.image.result == 'success' }}
+        env:
+          DTRACK_URL: ${{ vars.DTRACK_URL }}
+          DTRACK_IMAGE_PROJECT_UUID: ${{ vars.DTRACK_IMAGE_PROJECT_UUID }}
+          DTRACK_API_KEY: ${{ secrets.DTRACK_API_KEY }}
+        run: |
+          set -o pipefail
+          .work/upload-venv/bin/python scripts/upload.py dtrack reports/sbom-image.json \
+            --project-env DTRACK_IMAGE_PROJECT_UUID \
+            --receipt reports/uploads/dtrack-image.json 2>&1 | tee reports/dtrack-image-upload.log
+      - name: Armazenar comprovantes e logs de upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-receipts
+          path: |
+            reports/uploads/
+            reports/*-upload.log
+          if-no-files-found: warn
+          retention-days: 30

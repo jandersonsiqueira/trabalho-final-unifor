@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+.work/
+.venv/
+reports/
+__pycache__/
+.DS_Store
+*.pdf
+
