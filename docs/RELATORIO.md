@@ -1,218 +1,423 @@
-# Integracao de SAST, SCA e gestao de vulnerabilidades em CI/CD
+# Integração de SAST, SCA e gestão de vulnerabilidades em CI/CD
 
-**Instituicao:** Universidade de Fortaleza (UNIFOR)  
-**Curso:** [PREENCHER POS-GRADUACAO]  
-**Disciplina:** DevSecOps  
-**Professor:** Cristiano Henrique  
-**Aluno(a):** [PREENCHER NOME E MATRICULA]  
-**Data da entrega:** [PREENCHER]  
-**Repositorio:** https://github.com/jandersonsiqueira/trabalho-final-unifor  
-**Execucao GitHub Actions:** [INSERIR URL E RUN ID]
+**Janderson Siqueira — Matrícula 2515965**
 
-> Status: validacao local concluida em 19/09/2026. Execucao completa no GitHub Actions e capturas dos paineis pendentes.
+**Repositório:** `jandersonsiqueira/trabalho-final-unifor`
+**Execução final:** GitHub Actions — Run #4 — ID `35643067274`
 
-## 1. Introducao
+> **Status final:** execução completa concluída com sucesso. Os quatro jobs finalizaram com sucesso, com ingestão confirmada no DefectDojo e no Dependency-Track.
 
-DevSecOps incorpora verificacoes de seguranca ao desenvolvimento e transforma seus resultados em trabalho com responsavel e prazo. SAST examina o codigo e configuracoes; SCA inventaria componentes de terceiros e correlaciona suas versoes com bases de vulnerabilidades. Este trabalho aplica essas tecnicas ao VAmPI, uma API intencionalmente vulneravel, em ambiente academico isolado.
+## 1. Introdução
 
-A orquestracao utiliza GitHub Actions, com workflow versionado junto aos scripts de analise e integracao. O escopo abrange analise estatica, inventario de dependencias e gestao dos achados. Testes dinamicos ficam como evolucao do projeto.
+DevSecOps incorpora verificações de segurança ao ciclo de desenvolvimento, buscando identificar vulnerabilidades de forma antecipada e transformar os resultados das ferramentas em ações de tratamento.
+
+Neste trabalho foram aplicadas técnicas de **SAST (Static Application Security Testing)** e **SCA (Software Composition Analysis)** sobre o VAmPI, uma API intencionalmente vulnerável utilizada em ambiente acadêmico isolado.
+
+A automação foi realizada com GitHub Actions. O Semgrep foi utilizado para análise estática e geração de resultados em SARIF, enquanto o cdxgen foi utilizado para gerar SBOMs no formato CycloneDX tanto do código-fonte quanto da imagem Docker.
+
+Os resultados foram posteriormente integrados ao DefectDojo, para centralização e triagem dos achados SAST, e ao Dependency-Track, para inventário dos componentes e correlação com vulnerabilidades conhecidas.
 
 ## 2. Objetivo
 
-Implementar uma pipeline que execute Semgrep, produza SARIF, gere SBOMs CycloneDX com cdxgen e envie os resultados ao DefectDojo e ao Dependency-Track. Demonstrar tanto a execucao quanto a interpretacao dos achados, incluindo classificacao, evidencia, CWE/CVE, responsavel e prazo.
+O objetivo do trabalho foi implementar uma pipeline DevSecOps capaz de:
 
-## 3. Arquitetura da solucao
+* executar análise estática utilizando Semgrep;
+* gerar relatório SARIF;
+* produzir SBOMs CycloneDX utilizando cdxgen;
+* analisar separadamente o código-fonte e a imagem Docker;
+* enviar os resultados SAST ao DefectDojo;
+* enviar os SBOMs ao Dependency-Track;
+* preservar artifacts e logs da execução;
+* analisar e interpretar achados de segurança encontrados durante o processo.
+
+Além da automação, buscou-se demonstrar que a execução bem-sucedida das ferramentas não substitui a triagem humana dos resultados.
+
+## 3. Arquitetura da solução
 
 ```mermaid
 flowchart TD
-  A[GitHub Actions - Ubuntu] --> B[Semgrep - SARIF]
-  A --> C[cdxgen - SBOM fonte]
-  A --> D[Docker build e export - SBOM imagem]
-  B --> E[Artifacts da execucao]
-  C --> E
-  D --> E
-  E --> F[Runner local - somente uploads]
-  F --> G[DefectDojo - SAST]
-  F --> H[Dependency-Track - fonte e imagem]
+    A[GitHub Actions] --> B[Semgrep]
+    A --> C[cdxgen - código-fonte]
+    A --> D[Build da imagem Docker]
+    D --> E[cdxgen - imagem]
+
+    B --> F[SARIF]
+    C --> G[SBOM CycloneDX - fonte]
+    E --> H[SBOM CycloneDX - imagem]
+
+    F --> I[Artifacts]
+    G --> I
+    H --> I
+
+    I --> J[Runner local devsecops-lab]
+
+    J --> K[DefectDojo]
+    J --> L[Dependency-Track]
+
+    K --> M[Triagem SAST]
+    L --> N[Componentes e vulnerabilidades]
 ```
 
-O runner do GitHub nao acessa diretamente o localhost do aluno. Um runner local recebe os artifacts e chama as APIs dos servicos Docker no mesmo host. Os servicos escutam apenas em loopback; nao foi necessario publica-los na internet. O VAmPI nao e iniciado para estas analises. A imagem e exportada para arquivo e inspecionada sem compartilhar o socket Docker com o scanner.
+Os jobs de análise são executados em runners hospedados pelo GitHub.
 
-Credenciais sao geradas localmente e excluidas do versionamento pelo `.gitignore`; os uploads do CI usam GitHub Secrets. URLs e IDs usam Variables. No repositorio publico, o runner local e temporario (`--ephemeral`), acionado manualmente na branch padrao e encerrado apos o job. Nao ha gatilho de pull request para esse runner.
+Como DefectDojo e Dependency-Track estão disponíveis apenas localmente, foi utilizado um **self-hosted runner** com a label `devsecops-lab`. Esse runner recupera os artifacts produzidos pelos jobs anteriores e realiza somente as integrações com as plataformas locais.
+
+Essa separação permite que os scanners sejam executados em ambiente isolado e evita a exposição do DefectDojo e do Dependency-Track na internet.
+
+O VAmPI foi analisado no commit:
+
+`f16052dce83f05847133ec98f01c5193a41de7d8`
 
 ## 4. Ferramentas utilizadas
 
-| Ferramenta | Funcao |
-| --- | --- |
-| GitHub Actions | Orquestracao, logs por etapa e artifacts |
-| VAmPI | Alvo no commit `f16052dce83f05847133ec98f01c5193a41de7d8` |
-| Semgrep 1.177.0 | Analise estatica com regras automaticas e SARIF 2.1.0 |
-| cdxgen 12.8.4 | Inventario do fonte e da imagem em CycloneDX 1.6 |
-| DefectDojo 3.3.100 | Importacao, deduplicacao e triagem de achados SAST |
-| Dependency-Track 4.14.4 | Inventario e correlacao continua com vulnerabilidades |
-| Docker Compose | Plataformas locais com persistencia |
+| Ferramenta                | Função                                                      |
+| ------------------------- | ----------------------------------------------------------- |
+| GitHub Actions            | Orquestração da pipeline, logs e artifacts                  |
+| VAmPI                     | Aplicação intencionalmente vulnerável utilizada como alvo   |
+| Semgrep 1.177.0           | Análise estática de segurança                               |
+| SARIF 2.1.0               | Formato utilizado para transportar os resultados SAST       |
+| cdxgen 12.8.4             | Geração dos SBOMs                                           |
+| CycloneDX 1.6             | Formato dos SBOMs                                           |
+| DefectDojo 3.3.100        | Centralização e triagem dos achados SAST                    |
+| Dependency-Track 4.14.4   | Inventário e correlação de componentes com vulnerabilidades |
+| Docker Compose            | Execução local das plataformas                              |
+| Self-hosted GitHub Runner | Integração entre GitHub Actions e serviços locais           |
 
-## 5. Implementacao da pipeline
+## 5. Implementação da pipeline
 
-O workflow `.github/workflows/devsecops.yml` define tres jobs de coleta e um de integracao. Os passos de checkout, preparacao das ferramentas, SAST, geracao/validacao do SARIF, SCA, geracao/validacao dos SBOMs, uploads e armazenamento ficam visiveis no Actions.
+O workflow `.github/workflows/devsecops.yml` foi dividido em quatro jobs principais:
 
-Os scans usam o mesmo commit do VAmPI. O Semgrep gera SARIF diretamente durante a analise; a etapa seguinte verifica sua estrutura e erros de execucao. A deteccao de findings permite continuar a coleta. Erros de ferramenta, arquivos invalidos e erros HTTP fazem a etapa falhar.
+1. **SAST e SARIF**
+2. **SCA e SBOM do fonte**
+3. **SCA e SBOM da imagem**
+4. **Integrações locais**
 
-Artifacts disponiveis sao preservados mesmo em falha. Os uploads sao independentes: uma indisponibilidade do DefectDojo nao impede a tentativa no Dependency-Track. A politica academica de severidade orienta a triagem, mas nao esta implementada como gate de release.
+Os três primeiros jobs realizam as análises de forma independente.
 
-[INSERIR PRINT DA PIPELINE]
+O quarto job depende dos resultados anteriores, executa no self-hosted runner e recupera os artifacts para realizar os uploads ao DefectDojo e ao Dependency-Track.
 
-[INSERIR PRINT DOS PASSOS E LOGS]
+Na execução final, os quatro jobs foram concluídos com sucesso:
 
-## 6. Analise SAST com Semgrep
+| Job                      | Resultado |
+| ------------------------ | --------- |
+| 1 - SAST e SARIF         | Sucesso   |
+| 2 - SCA e SBOM do fonte  | Sucesso   |
+| 3 - SCA e SBOM da imagem | Sucesso   |
+| 4 - Integrações locais   | Sucesso   |
 
-Foi utilizado `semgrep scan --config=auto --sarif`, com regras do registry, sem `--error` e com `--strict`. A versao testada exige metricas para o modo automatico. O conjunto remoto de regras pode mudar; a reproducao deve preservar o SARIF e os logs da execucao escolhida.
+A execução final corresponde à **Run #4**, ID `35643067274`, iniciada em 21/09/2026.
 
-Na validacao local de 19/09/2026, o Semgrep analisou 22 arquivos, executou 332 regras e registrou 8 resultados, distribuidos entre codigo Python, Dockerfile, workflow e especificacao OpenAPI. Alguns resultados compartilham a mesma causa raiz e devem ser agrupados durante a triagem.
+O commit analisado pelo workflow foi:
 
-| Medida da execucao final no Actions | Resultado |
-| --- | --- |
-| Data, URL e run ID | [PREENCHER] |
-| Regras e arquivos analisados | [PREENCHER COM LOG REAL] |
-| Findings brutos | [PREENCHER COM SARIF REAL] |
-| Distribuicao de severidade | [PREENCHER; INFORMAR CRITERIO] |
-| Verdadeiros/falsos positivos apos triagem | [PREENCHER] |
+`f16f73d09537f3cdaedd86f2063f2741a4aecfbc`
 
-[INSERIR PRINT DO SEMGREP E SARIF]
+### Evidência — pipeline completa
 
-## 7. Analise SCA e geracao do SBOM
+Inserir aqui o print enviado da tela do GitHub Actions mostrando os quatro jobs em verde.
 
-O `sbom.json` descreve o projeto Python a partir do fonte e da resolucao de dependencias. O `sbom-image.json` descreve a imagem efetivamente construida e inclui pacotes do sistema operacional. O identificador da imagem fica em `image-id.txt`. Os inventarios sao enviados a projetos/versoes diferentes no Dependency-Track para permitir comparacao.
+## 6. Análise SAST com Semgrep
 
-Na validacao local foram obtidos 26 componentes no fonte e 388 na imagem: 92 bibliotecas, 289 arquivos, 3 frameworks e 4 aplicacoes. O cdxgen produziu tambem 124 ativos criptograficos, excluidos do inventario final por incompatibilidade do classificador com o Dependency-Track 4.14. O SBOM do fonte inclui uma declaracao sem versao e uma ocorrencia resolvida de `swagger-ui-bundle`. O grafo de dependencias apresentou aviso sobre a raiz, limitando a classificacao automatica de relacoes diretas e transitivas.
+O Semgrep foi executado com regras automáticas do registry e geração direta de SARIF.
 
-O cdxgen gera o inventario. O Dependency-Track correlaciona as versoes dos componentes com as bases de vulnerabilidades; por isso, a contagem de componentes e registrada separadamente da contagem de CVEs.
+A execução final utilizou a versão **1.177.0**.
 
-| Medida | Fonte | Imagem |
-| --- | --- | --- |
-| Componentes | [INSERIR CONTAGEM REAL] | [INSERIR CONTAGEM REAL] |
-| UUID do projeto | [PREENCHER] | [PREENCHER] |
-| Vulnerabilidades por severidade | [PREENCHER APOS SINCRONIZACAO] | [PREENCHER APOS SINCRONIZACAO] |
-| Data e fontes de vulnerabilidade | [PREENCHER] | [PREENCHER] |
+Os resultados foram:
 
-[INSERIR PRINT DO CDXGEN E DOS DOIS SBOMS]
+| Métrica                            | Resultado         |
+| ---------------------------------- | ----------------- |
+| Arquivos analisados                | 22                |
+| Regras executadas                  | 332               |
+| Findings encontrados               | 8                 |
+| Formato de saída                   | SARIF 2.1.0       |
+| Findings importados no DefectDojo  | 8                 |
+| Severidade observada no DefectDojo | 4 High e 4 Medium |
 
-**Priorizacao SCA:** [SELECIONAR COMPONENTE REAL; COMPARAR SEVERIDADE, DEPENDENCIA DIRETA/TRANSITIVA, CORRECAO DISPONIVEL E USO NO VAMPI]. Registrar a fonte do advisory e justificar atualizar, substituir, mitigar ou aceitar. Nao inferir explorabilidade apenas por CVSS.
+A existência de findings não interrompe automaticamente a geração das evidências. Entretanto, falhas reais da ferramenta, arquivos inválidos ou falhas nas integrações fazem a respectiva etapa falhar.
 
-## 8. Integracao com DefectDojo
+O relatório produzido pelo Semgrep foi armazenado como artifact da execução.
 
-O SARIF e enviado ao endpoint `import-scan` na primeira execucao e a `reimport-scan` nas seguintes, com tipo `SARIF`, Engagement identificado e titulo de Test estavel. A reimportacao usa o ID do Test e permite acompanhar execucoes recorrentes. Os achados entram ativos, sem verificacao humana automatica e sem fechamento automatico dos anteriores.
+### Evidência — DefectDojo
 
-Validacao local: Product `VAmPI`, Engagement ID `1`, Test ID `1`, 8 findings importados (4 High e 4 Medium), ativos e nao verificados. A segunda importacao confirmou o mesmo Test ID. Esses dados sao do laboratorio local.
+Inserir aqui o print enviado do dashboard do DefectDojo.
 
-Product/Engagement/Test da execucao final: [CONFIRMAR IDS NOS LOGS DO ACTIONS]  
-Findings importados / deduplicados na execucao final: [INSERIR DADOS REAIS]
+O dashboard confirmou a existência de **8 findings ativos**, sendo:
 
-[INSERIR PRINT DO DEFECTDOJO]
+* 4 High;
+* 4 Medium;
+* 0 fechados;
+* 0 com risco aceito.
 
-[INSERIR PRINT DOS FINDINGS E ESTADOS DE TRIAGEM]
+O SARIF foi importado no:
 
-A reimportacao confirmou a reutilizacao do Test. A avaliacao de tendencia depende de novas execucoes e do acompanhamento dos estados de triagem.
+* Engagement ID: `1`
+* Test ID: `1`
 
-## 9. Integracao com Dependency-Track
+O log da execução final confirmou:
 
-O cliente envia cada SBOM, acompanha o token de processamento e verifica componentes no projeto. A analise contra fontes externas e assincrona. Foram configurados projetos separados para fonte e imagem, com uma API Key restrita a upload e leitura do portfolio.
+`DefectDojo: importacao aceita; Test 1`
 
-Fontes habilitadas e estado da sincronizacao: [INSERIR CONFIGURACAO REAL]  
-Data da ultima analise: [INSERIR]  
-Comprovantes de ingestao: [INSERIR REFERENCIA AOS LOGS]
+A utilização de reimportação permite reutilizar o mesmo Test em execuções posteriores, evitando a criação desnecessária de novos testes para cada execução da pipeline.
 
-[INSERIR PRINT DO DEPENDENCY-TRACK]
+### Evidência — findings
 
-[INSERIR PRINT DOS COMPONENTES E VULNERABILIDADES]
+Inserir aqui o print enviado da tela **Achados em aberto**, mostrando os oito resultados importados.
 
-## 10. Evidencias da execucao
+## 7. Análise SCA e geração dos SBOMs
 
-| Evidencia | Arquivo / referencia |
-| --- | --- |
-| Pipeline completa no GitHub Actions | [INSERIR PRINT DA PIPELINE] |
-| Checkout e ferramentas | [INSERIR PRINT COM SHA E VERSOES] |
-| Semgrep e SARIF | [INSERIR PRINT E ARTIFACT] |
-| cdxgen fonte e imagem | [INSERIR PRINTS E ARTIFACTS] |
-| Uploads das duas plataformas | [INSERIR LOGS] |
-| DefectDojo: dashboard, Test e findings | [INSERIR PRINT DO DEFECTDOJO] |
-| Dependency-Track: dashboard, projetos e componentes | [INSERIR PRINT DO DEPENDENCY-TRACK] |
-| Detalhes dos tres achados | [INSERIR PRINTS E REFERENCIAS] |
-| Logs completos | [INSERIR CAMINHO DO ZIP BAIXADO DO ACTIONS] |
+O cdxgen foi utilizado para gerar dois inventários independentes:
 
-## 11. Analise dos principais achados
+1. SBOM do código-fonte;
+2. SBOM da imagem Docker efetivamente construída.
 
-### 11.1 Politica de tratamento
+Essa separação é importante porque a imagem contém componentes adicionais do ambiente de execução que não necessariamente aparecem ao analisar apenas os arquivos do projeto.
 
-Para este trabalho: criticos exigem mitigacao imediata e correcao em ate 24h; altos, 7 dias; medios, 30 dias; baixos, proximo toque com limite de 90 dias. Os prazos contam da confirmacao da triagem. Criticos bloqueiam release em uma politica de producao, mas este laboratorio nao realiza deploy. Responsavel tecnico e aprovador de risco sao papeis distintos. Aceitacoes exigem justificativa, aprovador e reavaliacao em ate 30 dias.
+### Resultado dos SBOMs
 
-### 11.2 Achado 1 - Chave de assinatura fixa
+| Métrica                     |         Fonte |         Imagem |
+| --------------------------- | ------------: | -------------: |
+| Formato                     | CycloneDX 1.6 |  CycloneDX 1.6 |
+| Componentes                 |            26 |            388 |
+| Projeto no Dependency-Track | VAmPI / fonte | VAmPI / imagem |
+| Critical                    |             0 |              0 |
+| High                        |             9 |             11 |
+| Medium                      |            14 |             26 |
+| Low                         |             3 |              5 |
+| Unassigned                  |             1 |              1 |
+| Risk Score                  |            95 |            143 |
 
-| Campo | Analise do scan local |
-| --- | --- |
-| Ferramenta | Semgrep 1.177.0 |
-| Vulnerabilidade | Chave criptografica fixa na configuracao Flask |
-| Regra | `python.flask.security.audit.hardcoded-config.avoid_hardcoded_config_SECRET_KEY` |
-| Descricao | O codigo define uma chave constante em `config.py`; `models/user_model.py` usa essa configuracao para assinar e verificar JWTs HS256. Quem conhece a chave pode produzir assinaturas validas. |
-| Evidencia | `config.py:13`, uso em `models/user_model.py:39` e `:48`; `reports/semgrep.sarif`; finding local Dojo ID 7. [INSERIR PRINT DO FINDING REAL NO ACTIONS/DOJO] |
-| CWE/CVE | O SARIF associa CWE-489. A revisao do mecanismo indica CWE-321 (chave criptografica fixa), tambem relacionada a CWE-798. Nao foi identificada uma CVE especifica para esse achado. |
-| Severidade | SARIF `error`, Dojo local High; proposta humana: Alta pelo papel da chave na autenticacao. Confirmar contexto de exposicao. |
-| Verdadeiro ou falso positivo | Verdadeiro positivo por revisao do fluxo de assinatura; nao foi realizada exploracao dinamica. |
-| Justificativa | O valor nao e apenas exemplo documental: e lido pela rotina de autenticacao. |
-| Possivel correcao | Segredo aleatorio externo ao codigo, com rotacao, invalidacao dos tokens anteriores e protecao da configuracao. |
-| Responsavel | Time da aplicacao; [INSERIR NOME]. |
-| Prazo | Ate 7 dias da confirmacao; [INSERIR DATA DE CONFIRMACAO E VENCIMENTO]. |
+UUID do projeto de fonte:
 
-### 11.3 Achado 2 - Container sem usuario restrito
+`b68d1eb3-d2c3-4c45-9699-0e4b7d478f25`
 
-| Campo | Analise do scan local |
-| --- | --- |
-| Ferramenta | Semgrep 1.177.0 |
-| Vulnerabilidade | Execucao da aplicacao com privilegios desnecessarios no container |
-| Regra | `dockerfile.security.missing-user.missing-user` |
-| Descricao | O estagio final do Dockerfile nao declara `USER` nao privilegiado antes de iniciar a aplicacao. |
-| Evidencia | `Dockerfile:17`, `reports/semgrep.sarif`, finding local Dojo ID 6; `docker image inspect` confirmou `Config.User` vazio. Revisar tambem a linha 16, da mesma causa raiz. [INSERIR PRINT DO FINDING REAL] |
-| CWE/CVE | CWE-250 na regra principal; a regra da linha 16 associa CWE-269. Nao ha CVE especifica para essa configuracao. |
-| Severidade | SARIF `error`, Dojo local High; proposta humana: Media em container isolado, sujeita a elevacao conforme privilegios e exposicao. A reducao proposta exige aprovacao na triagem; nao foi aplicada no Dojo. |
-| Verdadeiro ou falso positivo | Verdadeiro positivo de configuracao por revisao do Dockerfile; nao demonstra escape de container. |
-| Justificativa | O Dockerfile usa uma base Python sem trocar de usuario no estagio final. Comprometimento da aplicacao pode ter impacto maior dentro do container. |
-| Possivel correcao | Criar usuario/grupo dedicado, ajustar permissoes dos arquivos e declarar `USER` no estagio final. Validar escrita no SQLite e inicializacao da aplicacao. |
-| Responsavel | Plataforma em conjunto com time da aplicacao; [INSERIR NOME]. |
-| Prazo | Ate 7 dias enquanto mantido High; 30 dias apenas se a reclassificacao para Media for aprovada. [INSERIR DATA DE CONFIRMACAO E VENCIMENTO]. |
+UUID do projeto da imagem:
 
-### 11.4 Achado 3 - Actions referenciadas por tags mutaveis
+`e91927db-1fa1-4bc1-a6b8-010bf4b81480`
 
-| Campo | Analise do scan local |
-| --- | --- |
-| Ferramenta | Semgrep 1.177.0 |
-| Vulnerabilidade | Dependencia de CI sem fixacao por commit |
-| Regra | `yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag` |
-| Descricao | O workflow original do VAmPI usa referencias como `docker/setup-qemu-action@v2`, que podem apontar para outro codigo sem mudanca no workflow consumidor. |
-| Evidencia | `.github/workflows/docker-image.yml:16`, finding local Dojo ID 1, com ocorrencias adicionais nas linhas 19, 22 e 28. [INSERIR PRINT DO FINDING REAL] |
-| CWE/CVE | CWE-1357 e CWE-353 reportadas pelo scanner. Nao implica ocorrencia de ataque nem uma CVE concreta. |
-| Severidade | SARIF `warning`; proposta humana: Media, conforme acessos concedidos ao workflow. |
-| Verdadeiro ou falso positivo | Verdadeiro positivo de integridade/configuracao; exploracao nao demonstrada. |
-| Justificativa | As referencias identificam tags, nao commits imutaveis. As quatro ocorrencias compartilham o mesmo tipo de risco. |
-| Possivel correcao | Fixar actions em SHA completo revisado, com atualizacoes controladas. O workflow deste trabalho ja utiliza SHAs. |
-| Responsavel | Responsavel pela pipeline/plataforma; [INSERIR NOME]. |
-| Prazo | Ate 30 dias da confirmacao; [INSERIR DATA DE CONFIRMACAO E VENCIMENTO]. |
+O SBOM de fonte apresentou **26 componentes**, enquanto o SBOM da imagem apresentou **388 componentes**.
 
-Os tres achados foram selecionados do SARIF da execucao local. Outro resultado, referente a um JWT na especificacao OpenAPI, requer verificacao da validade e do uso do token antes de ser classificado como vazamento de credencial ativa.
+Essa diferença demonstra a importância de analisar também o artefato que será executado, pois a imagem inclui bibliotecas, arquivos, frameworks e outros componentes provenientes do ambiente base.
 
-### 11.5 Limites da analise
+A quantidade de componentes não corresponde à quantidade de vulnerabilidades. O cdxgen realiza o inventário; a correlação com vulnerabilidades conhecidas é responsabilidade do Dependency-Track.
 
-As severidades humanas sao propostas justificadas, distintas dos niveis SARIF. A aplicacao e propositalmente vulneravel e foi preservada para o exercicio. SAST nao prova exploracao e pode deixar falhas sem detectar. A ausencia de achado sobre um trecho nao demonstra seguranca. SCA depende de inventario completo, versoes resolvidas e bases sincronizadas. DAST e logica de negocio nao foram avaliados nesta entrega.
+## 8. Integração com DefectDojo
 
-## 12. Conclusao
+O SARIF produzido pelo Semgrep foi enviado automaticamente ao DefectDojo pelo job de integrações locais.
 
-A implementacao combina coleta automatizada, inventario de componentes e gestao dos resultados, com identificacao clara das etapas e preservacao de evidencias. A escolha de runners separados resolve o acesso aos servicos locais e limita a disponibilizacao de chaves aos uploads.
+A integração foi projetada para utilizar `import-scan` na primeira importação e `reimport-scan` nas execuções seguintes.
 
-[COMPLETAR APOS A EXECUCAO NO GITHUB: RESULTADO DOS QUATRO JOBS, CONFIRMACAO DE INGESTAO NAS PLATAFORMAS E PRINCIPAL APRENDIZADO DA TRIAGEM.]
+Na execução final foram confirmados:
 
-Como evolucao, podem ser incluidos ZAP, lockfiles e digests para maior reprodutibilidade, gate de release apos a fase de coleta, chamados com responsavel e acompanhamento dos prazos. Uma pipeline verde confirma execucao dos controles configurados; nao equivale a uma aplicacao segura.
+| Item            | Resultado |
+| --------------- | --------- |
+| Engagement      | 1         |
+| Test            | 1         |
+| Findings ativos | 8         |
+| High            | 4         |
+| Medium          | 4         |
+| Upload          | Sucesso   |
 
-## Referencias
+A ferramenta permite centralizar os findings encontrados pelo scanner e posteriormente registrar decisões de triagem, responsáveis, correções e aceitação de risco.
 
-- HENRIQUE, Cristiano. *DevSecOps - Seguranca Integrada ao Ciclo de Desenvolvimento*. Material da disciplina, UNIFOR.
-- Repositorio oficial do VAmPI e documentacoes oficiais listadas no README.
-- SARIF, SBOMs, logs e recibos: [INSERIR LINK PARA ARTIFACTS DA EXECUCAO FINAL].
+## 9. Integração com Dependency-Track
+
+Os dois SBOMs foram enviados ao Dependency-Track.
+
+Após cada upload, o cliente aguardou o processamento e verificou a presença dos componentes no respectivo projeto.
+
+O log da execução confirmou que ambos foram aceitos:
+
+`Dependency-Track: SBOM aceito; processamento encerrado e componentes presentes.`
+
+A análise das vulnerabilidades ocorre de maneira assíncrona após a ingestão do SBOM.
+
+### 9.1 Projeto VAmPI / fonte
+
+Último BOM Import observado:
+
+**21/09/2026 às 16:14:28**
+
+Última análise de vulnerabilidades:
+
+**21/09/2026 às 16:14:29**
+
+Resultado:
+
+| Severidade | Quantidade |
+| ---------- | ---------: |
+| Critical   |          0 |
+| High       |          9 |
+| Medium     |         14 |
+| Low        |          3 |
+| Unassigned |          1 |
+
+**Risk Score: 95**
+
+Inserir aqui o print enviado da tela **Project Vulnerabilities — VAmPI / fonte**.
+
+### 9.2 Projeto VAmPI / imagem
+
+Último BOM Import observado:
+
+**21/09/2026 às 16:14:34**
+
+Última análise de vulnerabilidades:
+
+**21/09/2026 às 16:14:35**
+
+Resultado:
+
+| Severidade | Quantidade |
+| ---------- | ---------: |
+| Critical   |          0 |
+| High       |         11 |
+| Medium     |         26 |
+| Low        |          5 |
+| Unassigned |          1 |
+
+**Risk Score: 143**
+
+Inserir aqui o print enviado da tela **Project Vulnerabilities — VAmPI / imagem**.
+
+O projeto referente à imagem apresentou maior quantidade de componentes e maior Risk Score que o projeto de fonte. Isso é compatível com a maior superfície de componentes inventariados na imagem, embora a quantidade isolada de componentes não determine, por si só, a explorabilidade das vulnerabilidades.
+
+## 10. Evidências da execução
+
+As principais evidências coletadas durante a execução foram:
+
+| Evidência               | Resultado observado                      |
+| ----------------------- | ---------------------------------------- |
+| GitHub Actions          | Quatro jobs concluídos com sucesso       |
+| Semgrep                 | 332 regras, 22 arquivos e 8 findings     |
+| SARIF                   | Documento SARIF 2.1.0 válido             |
+| SBOM do fonte           | CycloneDX 1.6 com 26 componentes         |
+| SBOM da imagem          | CycloneDX 1.6 com 388 componentes        |
+| DefectDojo              | 8 findings: 4 High e 4 Medium            |
+| Dependency-Track fonte  | 9 High, 14 Medium, 3 Low e 1 Unassigned  |
+| Dependency-Track imagem | 11 High, 26 Medium, 5 Low e 1 Unassigned |
+| Integrações             | Uploads concluídos com sucesso           |
+
+Além dos prints dos dashboards, a pipeline preserva os relatórios e recibos de integração como artifacts do GitHub Actions.
+
+## 11. Análise dos principais achados
+
+### 11.1 Política de tratamento proposta
+
+Para fins deste exercício, foi considerada a seguinte proposta de SLA para tratamento:
+
+| Severidade | Prazo proposto          |
+| ---------- | ----------------------- |
+| Critical   | imediato / até 24 horas |
+| High       | até 7 dias              |
+| Medium     | até 30 dias             |
+| Low        | até 90 dias             |
+
+Os prazos são uma proposta utilizada para demonstrar o processo de gestão de vulnerabilidades e não representam necessariamente uma política institucional existente.
+
+### 11.2 Achado 1 — Chave de assinatura fixa
+
+| Campo                           | Análise                                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Ferramenta                      | Semgrep                                                                                                            |
+| Finding                         | `Hardcoded Variable SECRET_KEY Detected`                                                                           |
+| Severidade no DefectDojo        | High                                                                                                               |
+| Evidência                       | Valor sensível definido diretamente na configuração da aplicação                                                   |
+| CWE reportado                   | CWE-489                                                                                                            |
+| Confiança indicada pelo scanner | Low confidence                                                                                                     |
+| Triagem                         | O código deve ser revisado no contexto de utilização da chave; no VAmPI ela é consumida pelo fluxo de autenticação |
+| Risco                           | Uma chave criptográfica conhecida pode comprometer mecanismos que dependem da confidencialidade dessa chave        |
+| Correção                        | Remover o segredo do código, utilizar variável de ambiente ou gerenciador de segredos e realizar rotação           |
+| Responsável proposto            | Time responsável pela aplicação                                                                                    |
+| Prazo proposto                  | Até 7 dias após confirmação                                                                                        |
+
+O achado é particularmente relevante porque valores secretos não devem permanecer versionados junto ao código-fonte.
+
+A correção adequada consiste em externalizar o segredo, utilizar um valor forte e aleatório e impedir que credenciais reais sejam armazenadas no repositório.
+
+### 11.3 Achado 2 — Container sem usuário não privilegiado
+
+| Campo                    | Análise                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| Ferramenta               | Semgrep                                                                                 |
+| Finding                  | `By Not Specifying a USER, a Program in the Container May Run with Elevated Privileges` |
+| Severidade no DefectDojo | High                                                                                    |
+| CWE                      | CWE-250 / CWE-269, conforme as ocorrências reportadas                                   |
+| Evidência                | O estágio final do Dockerfile não declara um `USER` não privilegiado                    |
+| Triagem                  | Verdadeiro positivo de configuração                                                     |
+| Risco                    | A aplicação pode executar com privilégios desnecessários dentro do container            |
+| Correção                 | Criar usuário e grupo dedicados, ajustar permissões e declarar `USER` no estágio final  |
+| Responsável proposto     | Time da aplicação em conjunto com plataforma                                            |
+| Prazo proposto           | Até 7 dias enquanto classificado como High                                              |
+
+O achado não significa que foi demonstrado um escape do container. Ele identifica uma configuração que aumenta o impacto potencial caso a aplicação seja comprometida.
+
+A utilização de um usuário dedicado aplica o princípio do menor privilégio e reduz a superfície de impacto dentro do ambiente do container.
+
+### 11.4 Achado 3 — JWT detectado no código/especificação
+
+| Campo                           | Análise                                                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ferramenta                      | Semgrep                                                                                                                                      |
+| Finding                         | `JWT Token Detected`                                                                                                                         |
+| Severidade no DefectDojo        | High                                                                                                                                         |
+| CWE reportado                   | CWE-321                                                                                                                                      |
+| Confiança indicada pelo scanner | Low confidence                                                                                                                               |
+| Triagem                         | Requer validação antes de ser classificado como credencial ativa                                                                             |
+| Risco                           | Caso o token seja válido e reutilizável, sua exposição pode permitir uso indevido                                                            |
+| Correção                        | Verificar origem e validade do token; revogar caso esteja ativo; remover valores reais do repositório e utilizar dados fictícios em exemplos |
+| Responsável proposto            | Time responsável pela aplicação                                                                                                              |
+| Prazo proposto                  | Validação imediata; até 7 dias para correção caso confirmado                                                                                 |
+
+Esse finding demonstra a importância da triagem humana.
+
+A simples detecção de uma sequência com formato de JWT não é suficiente para afirmar que existe uma credencial ativa exposta. É necessário verificar sua origem, finalidade, validade e possibilidade de reutilização.
+
+Caso seja apenas um valor fictício utilizado como exemplo, o finding poderá ser classificado como falso positivo ou risco aceito conforme a política adotada. Caso seja um token válido, deve ser revogado e removido imediatamente.
+
+## 12. Limitações da análise
+
+A aplicação utilizada no exercício é propositalmente vulnerável.
+
+Os resultados de SAST representam padrões encontrados pelo scanner e não demonstram, isoladamente, exploração prática.
+
+Da mesma forma, a presença de uma vulnerabilidade associada a determinado componente pelo SCA não significa automaticamente que ela seja explorável no contexto específico da aplicação.
+
+A análise depende de fatores como:
+
+* caminho de execução;
+* configuração;
+* exposição do componente;
+* versão efetivamente utilizada;
+* disponibilidade de correção;
+* contexto operacional.
+
+Por esse motivo, os resultados automatizados devem passar por triagem humana.
+
+DAST e testes específicos de lógica de negócio não fazem parte do escopo desta entrega.
+
+## 13. Conclusão
+
+A implementação permitiu integrar diferentes etapas de segurança a uma pipeline CI/CD utilizando ferramentas específicas para SAST, SCA, inventário de componentes e gestão de vulnerabilidades.
+
+Na execução final, os quatro jobs do GitHub Actions foram concluídos com sucesso.
+
+O Semgrep analisou 22 arquivos utilizando 332 regras e produziu 8 findings. O relatório SARIF foi importado no DefectDojo, que apresentou 4 achados High e 4 Medium.
+
+O cdxgen produziu dois SBOMs CycloneDX 1.6: um com 26 componentes referentes ao código-fonte e outro com 388 componentes referentes à imagem Docker.
+
+Os dois documentos foram processados pelo Dependency-Track. O projeto de fonte apresentou Risk Score 95, enquanto o projeto da imagem apresentou Risk Score 143.
+
+A utilização de um self-hosted runner permitiu integrar uma pipeline executada no GitHub com serviços disponíveis apenas no ambiente local, sem necessidade de expor DefectDojo ou Dependency-Track publicamente.
+
+O principal aprendizado da atividade é que uma pipeline verde comprova que os controles configurados foram executados corretamente, mas não significa que a aplicação esteja segura. Os scanners produzem informações que ainda precisam ser analisadas, contextualizadas, priorizadas e transformadas em ações de correção.
+
+Como evolução do projeto, poderiam ser adicionados testes DAST, políticas automáticas de bloqueio de release, acompanhamento formal dos SLAs de correção e integração com sistemas de gestão de chamados.
+
+## Referências
+
+* HENRIQUE, Cristiano. *DevSecOps — Segurança Integrada ao Ciclo de Desenvolvimento*. Material da disciplina.
+* Documentação oficial do Semgrep.
+* Documentação oficial do CycloneDX/cdxgen.
+* Documentação oficial do DefectDojo.
+* Documentação oficial do Dependency-Track.
+* Repositório oficial do VAmPI.
+* SARIF, SBOMs, logs e recibos produzidos pela GitHub Actions Run #4.
