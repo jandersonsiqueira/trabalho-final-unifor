@@ -113,7 +113,7 @@ O commit analisado pelo workflow foi:
 
 ### Evidência — pipeline completa
 
-Inserir aqui o print enviado da tela do GitHub Actions mostrando os quatro jobs em verde.
+![alt text](evidencias/01-pipeline.png)
 
 ## 6. Análise SAST com Semgrep
 
@@ -138,7 +138,7 @@ O relatório produzido pelo Semgrep foi armazenado como artifact da execução.
 
 ### Evidência — DefectDojo
 
-Inserir aqui o print enviado do dashboard do DefectDojo.
+![alt text](evidencias/02-defectdojo-dashboard.png)
 
 O dashboard confirmou a existência de **8 findings ativos**, sendo:
 
@@ -160,7 +160,7 @@ A utilização de reimportação permite reutilizar o mesmo Test em execuções 
 
 ### Evidência — findings
 
-Inserir aqui o print enviado da tela **Achados em aberto**, mostrando os oito resultados importados.
+![alt text](evidencias/03-defectdojo-findings.png)
 
 ## 7. Análise SCA e geração dos SBOMs
 
@@ -252,7 +252,7 @@ Resultado:
 
 **Risk Score: 95**
 
-Inserir aqui o print enviado da tela **Project Vulnerabilities — VAmPI / fonte**.
+![alt text](evidencias/05-dtrack-fonte.png)
 
 ### 9.2 Projeto VAmPI / imagem
 
@@ -276,7 +276,7 @@ Resultado:
 
 **Risk Score: 143**
 
-Inserir aqui o print enviado da tela **Project Vulnerabilities — VAmPI / imagem**.
+![alt text](evidencias/06-dtrack-imagem.png)
 
 O projeto referente à imagem apresentou maior quantidade de componentes e maior Risk Score que o projeto de fonte. Isso é compatível com a maior superfície de componentes inventariados na imagem, embora a quantidade isolada de componentes não determine, por si só, a explorabilidade das vulnerabilidades.
 
